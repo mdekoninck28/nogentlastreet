@@ -215,7 +215,7 @@ export default function Home() {
           <img
             src="/logo.png"
             alt="Logo Nogent-la-Street"
-            className="h-48 w-48 shrink-0 object-contain"
+            className="h-45 w-45 shrink-0 object-contain"
           />
           <div>
             <h1 className="mt-1 text-2xl font-black sm:text-3xl">
