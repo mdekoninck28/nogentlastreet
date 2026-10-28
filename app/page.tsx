@@ -131,17 +131,17 @@ export default function Home() {
     }
 
     if (recherche.trim().length < 5) {
-      setMessage("Tape au moins 5 caractères pour rechercher une rue.");
+      setMessage("💘 Tape au moins 5 caractères pour rechercher une rue.");
       return;
     }
 
     if (rueChoisieId === null) {
-      setMessage("Sélectionne une rue dans la liste des suggestions.");
+      setMessage("💘 Sélectionne une rue dans la liste des suggestions.");
       return;
     }
 
     if (ruesDejaTentees.includes(rueChoisieId)) {
-      setMessage("Tu as déjà essayé cette rue ! Choisis une autre réponse.");
+      setMessage("💘 Tu as déjà essayé cette rue ! Choisis une autre réponse.");
       return;
     }
 
@@ -161,7 +161,7 @@ export default function Home() {
 
       if (!reponse.ok) {
         throw new Error(
-          resultat.erreur ?? "Impossible de vérifier ta réponse."
+          resultat.erreur ?? "🪲 Impossible de vérifier ta réponse."
         );
       }
 
@@ -176,7 +176,7 @@ export default function Home() {
       if (resultat.correcte) {
         setValidee(true);
         setMessage(
-          `Bravo ! Tu as trouvé ${resultat.nom} en ${coups} ${
+          `🎉 Bravo  ! Tu as trouvé ${resultat.nom} en ${coups} ${
             coups === 1 ? "coup" : "coups"
           } !`
         );
@@ -184,11 +184,11 @@ export default function Home() {
         if (indiceActuel < indices.length - 1) {
           setIndiceActuel((indice) => indice + 1);
           setMessage(
-            "Ce n'est pas la bonne rue. Voici un indice supplémentaire !"
+            "📍 Ce n'est pas la bonne rue. Voici un indice supplémentaire !"
           );
         } else {
           setMessage(
-            "Ce n'est pas la bonne rue. Réessaie avec un autre nom."
+            "❌ Ce n'est pas la bonne rue. Réessaie avec un autre nom."
           );
         }
 
@@ -201,7 +201,7 @@ export default function Home() {
       setMessage(
         erreur instanceof Error
           ? erreur.message
-          : "Une erreur est survenue. Réessaie."
+          : "🪲 Une erreur est survenue. Réessaie."
       );
     } finally {
       setChargementValidation(false);
