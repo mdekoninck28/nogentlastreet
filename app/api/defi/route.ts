@@ -53,6 +53,11 @@ export async function GET() {
     // Le défi précédent est celui qui précède le défi actif.
     const datePrecedente = dateParis(avantMidi ? -2 : -1);
 
+    console.log("Heure de Paris :", heureParis());
+    console.log("Avant midi :", avantMidi);
+    console.log("Date du défi recherchée :", date);
+    console.log("Date du défi précédent :", datePrecedente);
+
     // 1. Récupérer la réponse du défi précédent.
     const {
       data: defiPrecedent,
