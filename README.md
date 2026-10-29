@@ -1,6 +1,6 @@
 ## Nogent la Street
 
-Nogent la street est un petit jeu amateur développé en vibe coding sur le thème de la ville de Nogent-le-Rotrou (28) pour intégrer sur le site [WikiPerche](@https://wikiperche.fr).
+Nogent la street est un petit jeu amateur développé en vibe coding sur le thème de la ville de Nogent-le-Rotrou (28) pour intégrer sur le site [WikiPerche](https://wikiperche.fr).
 
 L'objectif est de deviner une rue de la ville chaque jour à partir de 3 indices maximum. Une nouvelle rue est proposée quotidiennement à midi.
 
