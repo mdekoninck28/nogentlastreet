@@ -8,9 +8,9 @@ L'objectif est de deviner une rue de la ville chaque jour à partir de 3 indices
 
 ### Stack technique
 
-Ce jeu utilise le framework Next.js proposé et hébergé par Vercel.app.
+Ce jeu utilise le framework Next.js proposé et hébergé par [Vercel](https://vercel.app).
 
-La base de données SQL contenant les rues est hébergée par Supabase.com.
+La base de données SQL contenant les rues est hébergée par [Supabase](https://supabase.com).
 
 ### Droits d'utilisation
 
