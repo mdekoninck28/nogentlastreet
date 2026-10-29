@@ -26,47 +26,114 @@ export default function Home() {
   const [chargementValidation, setChargementValidation] = useState(false);
   const [ruesDejaTentees, setRuesDejaTentees] = useState<number[]>([]);
 
-  // Charger le défi du jour et la réponse d'hier
+  // Charger le défi depuis l'API.
+  async function chargerDefi() {
+    const reponse = await fetch("/api/defi", {
+      cache: "no-store",
+    });
+
+    const resultat = await reponse.json();
+
+    if (!reponse.ok) {
+      throw new Error(
+        resultat.erreur ?? "Impossible de charger le défi."
+      );
+    }
+
+    setDateDefi(resultat.date);
+    setIndices(resultat.indices ?? []);
+    setRueDHier(resultat.rueDHier ?? null);
+  }
+
+  // Charger le défi au démarrage.
   useEffect(() => {
-    const controleur = new AbortController();
+    let annule = false;
 
-    async function chargerDefi() {
+    async function initialiser() {
       try {
-        const reponse = await fetch("/api/defi", {
-          signal: controleur.signal,
-          cache: "no-store",
-        });
-
-        const resultat = await reponse.json();
-
-        if (!reponse.ok) {
-          throw new Error(
-            resultat.erreur ?? "Impossible de charger le défi."
+        await chargerDefi();
+      } catch (erreur) {
+        if (!annule) {
+          setMessage(
+            "Impossible de charger le défi du jour. Réessaie plus tard."
           );
         }
-
-        setDateDefi(resultat.date);
-        setIndices(resultat.indices);
-        setRueDHier(resultat.rueDHier ?? null);
-      } catch (erreur) {
-        if (erreur instanceof Error && erreur.name === "AbortError") {
-          return;
-        }
-
-        setMessage("Impossible de charger le défi du jour. Réessaie plus tard.");
       } finally {
-        if (!controleur.signal.aborted) {
+        if (!annule) {
           setChargementDefi(false);
         }
       }
     }
 
-    chargerDefi();
+    void initialiser();
 
-    return () => controleur.abort();
+    return () => {
+      annule = true;
+    };
   }, []);
 
-  // Rechercher les rues dans Supabase via l'API
+  // Recharger automatiquement les données à midi, heure de Paris.
+  // Vérification périodique pour gérer aussi les onglets en arrière-plan.
+  useEffect(() => {
+    let dateDejaActualisee = "";
+
+    function verifierMidi() {
+      const maintenant = new Date();
+
+      const parties = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Europe/Paris",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      }).formatToParts(maintenant);
+
+      const obtenir = (type: string) =>
+        parties.find((p) => p.type === type)?.value ?? "";
+
+      const annee = obtenir("year");
+      const mois = obtenir("month");
+      const jour = obtenir("day");
+      const heure = Number(obtenir("hour"));
+
+      const dateParis = `${annee}-${mois}-${jour}`;
+
+      if (
+        heure >= 12 &&
+        dateDejaActualisee !== dateParis
+      ) {
+        dateDejaActualisee = dateParis;
+
+        // Récupérer le défi sans réinitialiser toute la page.
+        void chargerDefi()
+          .then(() => {
+            setIndiceActuel(0);
+            setNombreCoups(0);
+            setRecherche("");
+            setRueChoisieId(null);
+            setSuggestions([]);
+            setRuesDejaTentees([]);
+            setValidee(false);
+            setMessage("");
+          })
+          .catch(() => {
+            setMessage(
+              "Le nouveau défi n'est pas encore disponible. Réessaie dans quelques instants."
+            );
+          });
+      }
+    }
+
+    verifierMidi();
+
+    const minuterie = window.setInterval(verifierMidi, 15_000);
+
+    return () => window.clearInterval(minuterie);
+  }, []);
+
+  // Rechercher les rues dans Supabase via l'API.
   useEffect(() => {
     const terme = recherche.trim();
 
@@ -115,16 +182,18 @@ export default function Home() {
       }
     }
 
-    // Éviter d'interroger la base à chaque frappe instantanément
-    const temporisation = setTimeout(rechercherRues, 250);
+    const temporisation = window.setTimeout(
+      rechercherRues,
+      250
+    );
 
     return () => {
-      clearTimeout(temporisation);
+      window.clearTimeout(temporisation);
       controleur.abort();
     };
   }, [recherche, validee, chargementDefi, rueChoisieId]);
 
-  // Valider la réponse côté serveur
+  // Valider la réponse côté serveur.
   async function validerReponse() {
     if (chargementDefi || chargementValidation || validee) {
       return;
@@ -176,7 +245,7 @@ export default function Home() {
       if (resultat.correcte) {
         setValidee(true);
         setMessage(
-          `🎉 Bravo  ! Tu as trouvé ${resultat.nom} en ${coups} ${
+          `🎉 Bravo ! Tu as trouvé ${resultat.nom} en ${coups} ${
             coups === 1 ? "coup" : "coups"
           } !`
         );
@@ -192,7 +261,6 @@ export default function Home() {
           );
         }
 
-        // Préparer la recherche suivante
         setRecherche("");
         setRueChoisieId(null);
         setSuggestions([]);
@@ -265,6 +333,10 @@ export default function Home() {
                 <p className="rounded-xl border border-white bg-white p-4 text-gray-600">
                   Chargement des indices…
                 </p>
+              ) : indices.length === 0 ? (
+                <p className="rounded-xl border border-white bg-white p-4 text-gray-600">
+                  Le défi du jour n'est pas encore disponible. Réessaie dans quelques instants.
+                </p>
               ) : (
                 indices.slice(0, indiceActuel + 1).map((indice, index) => (
                   <div
@@ -274,7 +346,9 @@ export default function Home() {
                     <p className="text-xs font-bold uppercase tracking-widest text-[#2d58db]">
                       Indice {index + 1}
                     </p>
-                    <p className="mt-2 leading-7 text-gray-800">{indice}</p>
+                    <p className="mt-2 leading-7 text-gray-800">
+                      {indice}
+                    </p>
                   </div>
                 ))
               )}
@@ -301,7 +375,12 @@ export default function Home() {
                 id="recherche-rue"
                 type="text"
                 value={recherche}
-                disabled={validee || chargementDefi || chargementValidation}
+                disabled={
+                  validee ||
+                  chargementDefi ||
+                  chargementValidation ||
+                  indices.length === 0
+                }
                 onChange={(event) => {
                   setRecherche(event.target.value);
                   setRueChoisieId(null);
@@ -347,7 +426,12 @@ export default function Home() {
 
             <button
               type="submit"
-              disabled={validee || chargementDefi || chargementValidation}
+              disabled={
+                validee ||
+                chargementDefi ||
+                chargementValidation ||
+                indices.length === 0
+              }
               className="mt-4 w-full rounded-xl bg-[#2d58db] px-5 py-4 font-bold text-white transition hover:bg-[#2449b8] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {chargementValidation
@@ -390,7 +474,7 @@ export default function Home() {
           <p>Alors, vrai Nogentais ou Touriste ?</p>
 
           <p className="mt-2">
-            Créé en soutien de {" "}
+            Créé en soutien de{" "}
             <a
               href="https://wikiperche.fr"
               target="_blank"

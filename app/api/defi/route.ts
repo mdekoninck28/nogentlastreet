@@ -45,9 +45,9 @@ function heureParis(): number {
 export async function GET() {
   try {
     const supabase = getSupabase();
-    const avantMidi = heureParis() < 12;
 
     // Avant midi, le défi actif reste celui de la veille.
+    const avantMidi = heureParis() < 12;
     const date = dateParis(avantMidi ? -1 : 0);
 
     // Le défi précédent est celui qui précède le défi actif.
@@ -87,13 +87,13 @@ export async function GET() {
       rueDHier = ruePrecedente.nom;
     }
 
-    // 2. Récupérer le défi actif.
+    // 2. Récupérer le défi actif et sa date réelle.
     const {
       data: defi,
       error: erreurDefi,
     } = await supabase
       .from("defis_quotidiens")
-      .select("rue_id")
+      .select("rue_id, date_defi")
       .eq("date_defi", date)
       .maybeSingle();
 
@@ -102,7 +102,6 @@ export async function GET() {
     }
 
     // Le défi actif n'a pas encore été généré.
-    // On conserve tout de même la réponse précédente.
     if (!defi) {
       return Response.json({
         date,
@@ -127,8 +126,9 @@ export async function GET() {
         new Error("Rue du défi actif introuvable.");
     }
 
+    // 4. Renvoyer la date réellement enregistrée.
     return Response.json({
-      date,
+      date: defi.date_defi,
       indices: [
         rue.indice_1,
         rue.indice_2,
