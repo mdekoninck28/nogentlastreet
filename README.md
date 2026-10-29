@@ -4,6 +4,8 @@ Nogent la street est un petit jeu amateur développé en vibe coding sur le thè
 
 L'objectif est de deviner une rue de la ville chaque jour à partir de 3 indices maximum. Une nouvelle rue est proposée quotidiennement à midi.
 
+Jeu disponible à l'adresse suivante : [https://nogentlastreet.wikiperche.fr](https://nogentlastreet.wikiperche.fr)
+
 ![Logo Nogent la street](https://i.ibb.co/tPFLhKWm/logo-nogent-la-street.png)
 
 ### Stack technique
