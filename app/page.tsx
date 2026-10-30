@@ -1,12 +1,35 @@
-
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type RueSuggestion = {
   id: number;
   nom: string;
 };
+
+type DefiApi = {
+  date: string;
+  indices: string[];
+  rueDHier: string | null;
+  defiDisponible: boolean;
+};
+
+// Récupère le défi actif depuis l'API (fonction pure, hors composant).
+async function recupererDefi(): Promise<DefiApi> {
+  const reponse = await fetch("/api/defi", { cache: "no-store" });
+  const resultat = await reponse.json();
+
+  if (!reponse.ok) {
+    throw new Error(resultat.erreur ?? "Impossible de charger le défi.");
+  }
+
+  return {
+    date: resultat.date,
+    indices: resultat.indices ?? [],
+    rueDHier: resultat.rueDHier ?? null,
+    defiDisponible: resultat.defiDisponible === true,
+  };
+}
 
 export default function Home() {
   const [recherche, setRecherche] = useState("");
@@ -26,23 +49,27 @@ export default function Home() {
   const [chargementValidation, setChargementValidation] = useState(false);
   const [ruesDejaTentees, setRuesDejaTentees] = useState<number[]>([]);
 
-  // Charger le défi depuis l'API.
-  async function chargerDefi() {
-    const reponse = await fetch("/api/defi", {
-      cache: "no-store",
-    });
+  // Date du défi actuellement affiché (vide s'il n'y en a pas).
+  const dateAfficheeRef = useRef("");
+  // Évite deux rechargements simultanés du défi.
+  const rechargementEnCoursRef = useRef(false);
 
-    const resultat = await reponse.json();
+  function appliquerDefi(defi: DefiApi) {
+    setDateDefi(defi.date);
+    setIndices(defi.indices);
+    setRueDHier(defi.rueDHier);
+    dateAfficheeRef.current = defi.defiDisponible ? defi.date : "";
+  }
 
-    if (!reponse.ok) {
-      throw new Error(
-        resultat.erreur ?? "Impossible de charger le défi."
-      );
-    }
-
-    setDateDefi(resultat.date);
-    setIndices(resultat.indices ?? []);
-    setRueDHier(resultat.rueDHier ?? null);
+  function reinitialiserPartie() {
+    setIndiceActuel(0);
+    setNombreCoups(0);
+    setRecherche("");
+    setRueChoisieId(null);
+    setSuggestions([]);
+    setRuesDejaTentees([]);
+    setValidee(false);
+    setMessage("");
   }
 
   // Charger le défi au démarrage.
@@ -50,18 +77,19 @@ export default function Home() {
     let annule = false;
 
     async function initialiser() {
+      rechargementEnCoursRef.current = true;
       try {
-        await chargerDefi();
-      } catch (erreur) {
+        const defi = await recupererDefi();
+        if (!annule) appliquerDefi(defi);
+      } catch {
         if (!annule) {
           setMessage(
             "Impossible de charger le défi du jour. Réessaie plus tard."
           );
         }
       } finally {
-        if (!annule) {
-          setChargementDefi(false);
-        }
+        rechargementEnCoursRef.current = false;
+        if (!annule) setChargementDefi(false);
       }
     }
 
@@ -72,13 +100,11 @@ export default function Home() {
     };
   }, []);
 
-  // Recharger automatiquement les données à midi, heure de Paris.
-  // Vérification périodique pour gérer aussi les onglets en arrière-plan.
+  // Après midi (heure de Paris), si le défi affiché n'est pas celui du
+  // jour, on réessaie toutes les 15 s jusqu'à ce qu'il soit disponible.
   useEffect(() => {
-    let dateDejaActualisee = "";
-
-    function verifierMidi() {
-      const maintenant = new Date();
+    async function verifierMidi() {
+      if (rechargementEnCoursRef.current) return;
 
       const parties = new Intl.DateTimeFormat("en-GB", {
         timeZone: "Europe/Paris",
@@ -86,49 +112,40 @@ export default function Home() {
         month: "2-digit",
         day: "2-digit",
         hour: "2-digit",
-        minute: "2-digit",
         hourCycle: "h23",
-      }).formatToParts(maintenant);
+      }).formatToParts(new Date());
 
       const obtenir = (type: string) =>
         parties.find((p) => p.type === type)?.value ?? "";
 
-      const annee = obtenir("year");
-      const mois = obtenir("month");
-      const jour = obtenir("day");
+      const dateParis = `${obtenir("year")}-${obtenir("month")}-${obtenir(
+        "day"
+      )}`;
       const heure = Number(obtenir("hour"));
 
-      const dateParis = `${annee}-${mois}-${jour}`;
+      if (heure < 12 || dateAfficheeRef.current === dateParis) return;
 
-      if (
-        heure >= 12 &&
-        dateDejaActualisee !== dateParis
-      ) {
-        dateDejaActualisee = dateParis;
+      rechargementEnCoursRef.current = true;
+      try {
+        const defi = await recupererDefi();
 
-        // Récupérer le défi sans réinitialiser toute la page.
-        void chargerDefi()
-          .then(() => {
-            setIndiceActuel(0);
-            setNombreCoups(0);
-            setRecherche("");
-            setRueChoisieId(null);
-            setSuggestions([]);
-            setRuesDejaTentees([]);
-            setValidee(false);
-            setMessage("");
-          })
-          .catch(() => {
-            setMessage(
-              "Le nouveau défi n'est pas encore disponible. Réessaie dans quelques instants."
-            );
-          });
+        // Défi du jour pas encore créé : on garde l'écran actuel
+        // et on réessaiera au prochain passage.
+        if (!defi.defiDisponible) return;
+
+        const ancienneDate = dateAfficheeRef.current;
+        appliquerDefi(defi);
+        if (ancienneDate !== defi.date) reinitialiserPartie();
+      } catch {
+        // Erreur réseau : nouvel essai au prochain passage.
+      } finally {
+        rechargementEnCoursRef.current = false;
       }
     }
 
-    verifierMidi();
-
-    const minuterie = window.setInterval(verifierMidi, 15_000);
+    const minuterie = window.setInterval(() => {
+      void verifierMidi();
+    }, 15_000);
 
     return () => window.clearInterval(minuterie);
   }, []);
@@ -182,10 +199,7 @@ export default function Home() {
       }
     }
 
-    const temporisation = window.setTimeout(
-      rechercherRues,
-      250
-    );
+    const temporisation = window.setTimeout(rechercherRues, 250);
 
     return () => {
       window.clearTimeout(temporisation);
@@ -237,10 +251,7 @@ export default function Home() {
       const coups = nombreCoups + 1;
       setNombreCoups(coups);
 
-      setRuesDejaTentees((anciennes) => [
-        ...anciennes,
-        rueChoisieId,
-      ]);
+      setRuesDejaTentees((anciennes) => [...anciennes, rueChoisieId]);
 
       if (resultat.correcte) {
         setValidee(true);
