@@ -157,4 +157,8 @@ export async function GET() {
     console.error("Erreur lors du chargement du défi :", erreur);
 
     return Response.json(
-      { erreur: "Impossible de charger le défi."
+      { erreur: "Impossible de charger le défi." },
+      { status: 500 }
+    );
+  }
+}
