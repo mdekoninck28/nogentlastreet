@@ -1,9 +1,5 @@
 import { getSupabase } from "@/lib/supabase/server";
 
-// Empêche la mise en cache statique de la route.
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
 type PartiesParis = {
   annee: number;
   mois: number;
