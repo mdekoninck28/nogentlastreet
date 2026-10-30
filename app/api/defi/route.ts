@@ -1,7 +1,7 @@
 
 import { getSupabase } from "@/lib/supabase/server";
 
-function dateDefiCourante(): string {
+function dateParis(decalage = 0): string {
   const maintenant = new Date();
 
   const parties = new Intl.DateTimeFormat("en-CA", {
@@ -9,20 +9,20 @@ function dateDefiCourante(): string {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-    hour: "2-digit",
-    hourCycle: "h23",
   }).formatToParts(maintenant);
 
-  const obtenir = (type: string) =>
-    parties.find((p) => p.type === type)?.value ?? "";
-
-  const annee = Number(obtenir("year"));
-  const mois = Number(obtenir("month"));
-  const jour = Number(obtenir("day"));
-  const heure = Number(obtenir("hour"));
+  const annee = Number(
+    parties.find((p) => p.type === "year")!.value
+  );
+  const mois = Number(
+    parties.find((p) => p.type === "month")!.value
+  );
+  const jour = Number(
+    parties.find((p) => p.type === "day")!.value
+  );
 
   const date = new Date(
-    Date.UTC(annee, mois - 1, jour - (heure < 12 ? 1 : 0))
+    Date.UTC(annee, mois - 1, jour + decalage)
   );
 
   return [
@@ -32,58 +32,76 @@ function dateDefiCourante(): string {
   ].join("-");
 }
 
-function datePrecedente(date: string): string {
-  const [annee, mois, jour] = date.split("-").map(Number);
-  const precedente = new Date(Date.UTC(annee, mois - 1, jour - 1));
+function heureParis(): number {
+  const heure = new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "Europe/Paris",
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date());
 
-  return [
-    precedente.getUTCFullYear(),
-    String(precedente.getUTCMonth() + 1).padStart(2, "0"),
-    String(precedente.getUTCDate()).padStart(2, "0"),
-  ].join("-");
+  return Number(heure);
 }
 
 export async function GET() {
   try {
     const supabase = getSupabase();
 
-    // Date du défi actif : midi à midi, heure de Paris.
-    const date = dateDefiCourante();
-    const datePrecedenteDefi = datePrecedente(date);
+    // Avant midi, le défi actif reste celui de la veille.
+    const avantMidi = heureParis() < 12;
+    const date = dateParis(avantMidi ? -1 : 0);
 
-    // Récupérer le défi précédent.
-    const { data: defiPrecedent, error: erreurDefiPrecedent } =
-      await supabase
-        .from("defis_quotidiens")
-        .select("rue_id")
-        .eq("date_defi", datePrecedenteDefi)
-        .maybeSingle();
+    // Le défi précédent est celui qui précède le défi actif.
+    const datePrecedente = dateParis(avantMidi ? -2 : -1);
 
-    if (erreurDefiPrecedent) throw erreurDefiPrecedent;
+    // 1. Récupérer la réponse du défi précédent.
+    const {
+      data: defiPrecedent,
+      error: erreurDefiPrecedent,
+    } = await supabase
+      .from("defis_quotidiens")
+      .select("rue_id")
+      .eq("date_defi", datePrecedente)
+      .maybeSingle();
+
+    if (erreurDefiPrecedent) {
+      throw erreurDefiPrecedent;
+    }
 
     let rueDHier: string | null = null;
 
     if (defiPrecedent) {
-      const { data: ruePrecedente, error } = await supabase
+      const {
+        data: ruePrecedente,
+        error: erreurRuePrecedente,
+      } = await supabase
         .from("rues")
         .select("nom")
         .eq("id", defiPrecedent.rue_id)
         .single();
 
-      if (error) throw error;
+      if (erreurRuePrecedente || !ruePrecedente) {
+        throw erreurRuePrecedente ??
+          new Error("Rue du défi précédent introuvable.");
+      }
 
       rueDHier = ruePrecedente.nom;
     }
 
-    // Récupérer le défi actif.
-    const { data: defi, error: erreurDefi } = await supabase
+    // 2. Récupérer le défi actif et sa date réelle.
+    const {
+      data: defi,
+      error: erreurDefi,
+    } = await supabase
       .from("defis_quotidiens")
       .select("rue_id, date_defi")
       .eq("date_defi", date)
       .maybeSingle();
 
-    if (erreurDefi) throw erreurDefi;
+    if (erreurDefi) {
+      throw erreurDefi;
+    }
 
+    // Le défi actif n'a pas encore été généré.
     if (!defi) {
       return Response.json({
         date,
@@ -93,25 +111,37 @@ export async function GET() {
       });
     }
 
-    // Récupérer les indices.
-    const { data: rue, error: erreurRue } = await supabase
+    // 3. Récupérer les indices du défi actif.
+    const {
+      data: rue,
+      error: erreurRue,
+    } = await supabase
       .from("rues")
       .select("indice_1, indice_2, indice_3")
       .eq("id", defi.rue_id)
       .single();
 
     if (erreurRue || !rue) {
-      throw erreurRue ?? new Error("Rue du défi introuvable.");
+      throw erreurRue ??
+        new Error("Rue du défi actif introuvable.");
     }
 
+    // 4. Renvoyer la date réellement enregistrée.
     return Response.json({
       date: defi.date_defi,
-      indices: [rue.indice_1, rue.indice_2, rue.indice_3],
+      indices: [
+        rue.indice_1,
+        rue.indice_2,
+        rue.indice_3,
+      ],
       rueDHier,
       defiDisponible: true,
     });
   } catch (erreur) {
-    console.error("Erreur lors du chargement du défi :", erreur);
+    console.error(
+      "Erreur lors du chargement du défi :",
+      erreur
+    );
 
     return Response.json(
       { erreur: "Impossible de charger le défi." },
