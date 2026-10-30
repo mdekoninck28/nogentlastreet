@@ -14,6 +14,69 @@ type DefiApi = {
   defiDisponible: boolean;
 };
 
+type PartieSauvegardee = {
+  date: string;
+  nombreCoups: number;
+  indiceActuel: number;
+  ruesDejaTentees: number[];
+  validee: boolean;
+  nomTrouve: string;
+};
+
+const CLE_PARTIE = "nogent-la-street-partie";
+
+// Lit la partie sauvegardée, uniquement si elle correspond au défi actif.
+function lirePartie(
+  date: string,
+  nombreIndices: number
+): PartieSauvegardee | null {
+  try {
+    const brut = window.localStorage.getItem(CLE_PARTIE);
+    if (!brut) return null;
+
+    const p = JSON.parse(brut) as Partial<PartieSauvegardee>;
+
+    if (p.date !== date) return null;
+    if (!Number.isInteger(p.nombreCoups) || p.nombreCoups! < 0) return null;
+    if (!Number.isInteger(p.indiceActuel) || p.indiceActuel! < 0) return null;
+    if (
+      !Array.isArray(p.ruesDejaTentees) ||
+      !p.ruesDejaTentees.every((id) => Number.isInteger(id))
+    ) {
+      return null;
+    }
+
+    return {
+      date,
+      nombreCoups: p.nombreCoups!,
+      indiceActuel: Math.min(
+        p.indiceActuel!,
+        Math.max(nombreIndices - 1, 0)
+      ),
+      ruesDejaTentees: p.ruesDejaTentees,
+      validee: p.validee === true,
+      nomTrouve: typeof p.nomTrouve === "string" ? p.nomTrouve : "",
+    };
+  } catch {
+    // localStorage indisponible (navigation privée, etc.) ou JSON invalide.
+    return null;
+  }
+}
+
+function ecrirePartie(partie: PartieSauvegardee) {
+  try {
+    window.localStorage.setItem(CLE_PARTIE, JSON.stringify(partie));
+  } catch {
+    // Stockage plein ou indisponible : on ignore, le jeu reste jouable.
+  }
+}
+
+function messageVictoire(nom: string, coups: number): string {
+  return `🎉 Bravo ! Tu as trouvé ${nom} en ${coups} ${
+    coups === 1 ? "coup" : "coups"
+  } !`;
+}
+
 // Récupère le défi actif depuis l'API (fonction pure, hors composant).
 async function recupererDefi(): Promise<DefiApi> {
   const reponse = await fetch("/api/defi", { cache: "no-store" });
@@ -36,6 +99,7 @@ export default function Home() {
   const [rueChoisieId, setRueChoisieId] = useState<number | null>(null);
   const [message, setMessage] = useState("");
   const [validee, setValidee] = useState(false);
+  const [nomTrouve, setNomTrouve] = useState("");
   const [indiceActuel, setIndiceActuel] = useState(0);
   const [nombreCoups, setNombreCoups] = useState(0);
 
@@ -69,10 +133,35 @@ export default function Home() {
     setSuggestions([]);
     setRuesDejaTentees([]);
     setValidee(false);
+    setNomTrouve("");
     setMessage("");
   }
 
-  // Charger le défi au démarrage.
+  // Restaure la partie sauvegardée pour ce défi, sinon repart de zéro.
+  function restaurerPartie(defi: DefiApi) {
+    const sauvegarde = lirePartie(defi.date, defi.indices.length);
+
+    if (!sauvegarde) {
+      reinitialiserPartie();
+      return;
+    }
+
+    setNombreCoups(sauvegarde.nombreCoups);
+    setIndiceActuel(sauvegarde.indiceActuel);
+    setRuesDejaTentees(sauvegarde.ruesDejaTentees);
+    setValidee(sauvegarde.validee);
+    setNomTrouve(sauvegarde.nomTrouve);
+    setRecherche("");
+    setRueChoisieId(null);
+    setSuggestions([]);
+    setMessage(
+      sauvegarde.validee && sauvegarde.nomTrouve
+        ? messageVictoire(sauvegarde.nomTrouve, sauvegarde.nombreCoups)
+        : ""
+    );
+  }
+
+  // Charger le défi au démarrage, puis restaurer la partie en cours.
   useEffect(() => {
     let annule = false;
 
@@ -80,7 +169,10 @@ export default function Home() {
       rechargementEnCoursRef.current = true;
       try {
         const defi = await recupererDefi();
-        if (!annule) appliquerDefi(defi);
+        if (!annule) {
+          appliquerDefi(defi);
+          if (defi.defiDisponible) restaurerPartie(defi);
+        }
       } catch {
         if (!annule) {
           setMessage(
@@ -99,6 +191,29 @@ export default function Home() {
       annule = true;
     };
   }, []);
+
+  // Sauvegarder la partie à chaque changement (une fois le défi chargé).
+  useEffect(() => {
+    if (chargementDefi || !dateDefi || indices.length === 0) return;
+
+    ecrirePartie({
+      date: dateDefi,
+      nombreCoups,
+      indiceActuel,
+      ruesDejaTentees,
+      validee,
+      nomTrouve,
+    });
+  }, [
+    chargementDefi,
+    dateDefi,
+    indices.length,
+    nombreCoups,
+    indiceActuel,
+    ruesDejaTentees,
+    validee,
+    nomTrouve,
+  ]);
 
   // Après midi (heure de Paris), si le défi affiché n'est pas celui du
   // jour, on réessaie toutes les 15 s jusqu'à ce qu'il soit disponible.
@@ -135,7 +250,7 @@ export default function Home() {
 
         const ancienneDate = dateAfficheeRef.current;
         appliquerDefi(defi);
-        if (ancienneDate !== defi.date) reinitialiserPartie();
+        if (ancienneDate !== defi.date) restaurerPartie(defi);
       } catch {
         // Erreur réseau : nouvel essai au prochain passage.
       } finally {
@@ -255,11 +370,8 @@ export default function Home() {
 
       if (resultat.correcte) {
         setValidee(true);
-        setMessage(
-          `🎉 Bravo ! Tu as trouvé ${resultat.nom} en ${coups} ${
-            coups === 1 ? "coup" : "coups"
-          } !`
-        );
+        setNomTrouve(resultat.nom);
+        setMessage(messageVictoire(resultat.nom, coups));
       } else {
         if (indiceActuel < indices.length - 1) {
           setIndiceActuel((indice) => indice + 1);
