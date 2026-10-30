@@ -1,30 +1,5 @@
-
 import { getSupabase } from "@/lib/supabase/server";
-
-function dateParis() {
-  const maintenant = new Date();
-
-  const parties = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Paris",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(maintenant);
-
-  const annee = Number(
-    parties.find((partie) => partie.type === "year")?.value
-  );
-  const mois = Number(
-    parties.find((partie) => partie.type === "month")?.value
-  );
-  const jour = Number(
-    parties.find((partie) => partie.type === "day")?.value
-  );
-
-  return `${annee}-${String(mois).padStart(2, "0")}-${String(
-    jour
-  ).padStart(2, "0")}`;
-}
+import { datesDefis } from "@/lib/defi-date";
 
 export async function POST(request: Request) {
   try {
@@ -39,11 +14,12 @@ export async function POST(request: Request) {
     }
 
     const supabase = getSupabase();
+    const { actif: dateActive } = datesDefis();
 
     const { data: defi, error: erreurDefi } = await supabase
       .from("defis_quotidiens")
       .select("rue_id")
-      .eq("date_defi", dateParis())
+      .eq("date_defi", dateActive)
       .maybeSingle();
 
     if (erreurDefi) {
