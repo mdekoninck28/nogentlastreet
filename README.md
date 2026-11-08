@@ -14,6 +14,8 @@ Ce jeu utilise le framework Next.js proposé et hébergé par [Vercel](https://v
 
 La base de données SQL contenant les rues est hébergée par [Supabase](https://supabase.com).
 
+Des fonctions exécutées par le serveur SQL permettent de générer le défi du jour et de l'afficher avec la date du jour. Le schéma de la base et les fonctions sont disponibles sur le repo Github.
+
 ### Droits d'utilisation
 
 Vous êtes libre de réutiliser le présent code pour tout autre projet similaire.
